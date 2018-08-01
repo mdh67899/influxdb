@@ -33,20 +33,26 @@ const logo = `
 
 // Command represents the command executed by "influxd run".
 type Command struct {
+	// 版本信息
 	Version   string
 	Branch    string
 	Commit    string
 	BuildTime string
 
+	// closing chan，代表所有后台goroutine收到信号要进行退出操作
 	closing chan struct{}
+	// pid文件路径
 	pidfile string
-	Closed  chan struct{}
+	// 所有业务逻辑goroutine退出后改chan关闭，通知上层服务正常关闭
+	Closed chan struct{}
 
+	// io输出
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
 	Logger *zap.Logger
 
+	// 主逻辑
 	Server *Server
 
 	// How to get environment variables. Normally set to os.Getenv, except for tests.
@@ -56,23 +62,27 @@ type Command struct {
 // NewCommand return a new instance of Command.
 func NewCommand() *Command {
 	return &Command{
+		// 初始化channel
 		closing: make(chan struct{}),
 		Closed:  make(chan struct{}),
-		Stdin:   os.Stdin,
-		Stdout:  os.Stdout,
-		Stderr:  os.Stderr,
-		Logger:  zap.NewNop(),
+		// 将标准输入、标准输出、标准错误复制给参数
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Logger: zap.NewNop(),
 	}
 }
 
 // Run parses the config from args and runs the server.
 func (cmd *Command) Run(args ...string) error {
 	// Parse the command line flags.
+	// 解析args参数， 此处应该使用flag进行处理， 易维护
 	options, err := cmd.ParseFlags(args...)
 	if err != nil {
 		return err
 	}
 
+	// 获取配置文件路径， 解析配置文件， 如果配置文件路径为空就load默认配置
 	config, err := cmd.ParseConfig(options.GetConfigPath())
 	if err != nil {
 		return fmt.Errorf("parse config: %s", err)
@@ -84,6 +94,7 @@ func (cmd *Command) Run(args ...string) error {
 	}
 
 	// Validate the configuration.
+	// 检查配置信息是否有问题
 	if err := config.Validate(); err != nil {
 		return fmt.Errorf("%s. To generate a valid configuration file run `influxd config > influxdb.generated.conf`", err)
 	}
@@ -95,6 +106,7 @@ func (cmd *Command) Run(args ...string) error {
 	}
 
 	// Attempt to run pprof on :6060 before startup if debug pprof enabled.
+	// 暴露pprofx接口
 	if config.HTTPD.DebugPprofEnabled {
 		runtime.SetBlockProfileRate(int(1 * time.Second))
 		runtime.SetMutexProfileFraction(1)
@@ -139,6 +151,7 @@ func (cmd *Command) Run(args ...string) error {
 		Branch:  cmd.Branch,
 		Time:    cmd.BuildTime,
 	}
+	// init server
 	s, err := NewServer(config, buildInfo)
 	if err != nil {
 		return fmt.Errorf("create server: %s", err)
@@ -146,12 +159,14 @@ func (cmd *Command) Run(args ...string) error {
 	s.Logger = cmd.Logger
 	s.CPUProfile = options.CPUProfile
 	s.MemProfile = options.MemProfile
+	// 对server中的service进行start操作
 	if err := s.Open(); err != nil {
 		return fmt.Errorf("open server: %s", err)
 	}
 	cmd.Server = s
 
 	// Begin monitoring the server's error channel.
+	// 接收server的 err chan信息， 打印出来
 	go cmd.monitorServerErrors()
 
 	return nil
@@ -168,6 +183,7 @@ func (cmd *Command) Close() error {
 	return nil
 }
 
+// 处理server的err chan信息
 func (cmd *Command) monitorServerErrors() {
 	logger := log.New(cmd.Stderr, "", log.LstdFlags)
 	for {
@@ -190,6 +206,7 @@ func (cmd *Command) removePIDFile() {
 
 // ParseFlags parses the command line flags from args and returns an options set.
 func (cmd *Command) ParseFlags(args ...string) (Options, error) {
+	// 解析args参数，返回Options结构体
 	var options Options
 	fs := flag.NewFlagSet("", flag.ContinueOnError)
 	fs.StringVar(&options.ConfigPath, "config", "", "")
@@ -266,9 +283,13 @@ Usage: influxd run [flags]
 
 // Options represents the command line options that can be parsed.
 type Options struct {
+	// 配置文件路径
 	ConfigPath string
-	PIDFile    string
+	// pid文件路径
+	PIDFile string
+	// cpu profile文件路径
 	CPUProfile string
+	// memory profile文件路径
 	MemProfile string
 }
 
@@ -279,6 +300,7 @@ type Options struct {
 //   3. The first influxdb.conf file on the path:
 //        - ~/.influxdb
 //        - /etc/influxdb
+// 利用优先级，返回配置文件路径，如果都找不到就返回空
 func (opt *Options) GetConfigPath() string {
 	if opt.ConfigPath != "" {
 		if opt.ConfigPath == os.DevNull {

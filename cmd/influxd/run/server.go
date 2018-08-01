@@ -58,8 +58,10 @@ type BuildInfo struct {
 // It is built using a Config and it manages the startup and shutdown of all
 // services in the proper order.
 type Server struct {
+	// build信息， 包括源码commit，branch，version以及build时间
 	buildInfo BuildInfo
-
+	// err chan， 所有的错误都会扔到该chan， 阻塞
+	// closing chan, 停止服务， 所有goroutine收到该chan close信号就结束服务退出操作
 	err     chan error
 	closing chan struct{}
 
@@ -106,6 +108,7 @@ func NewServer(c *Config, buildInfo *BuildInfo) (*Server, error) {
 	// We need to ensure that a meta directory always exists even if
 	// we don't start the meta store.  node.json is always stored under
 	// the meta directory.
+	// 确保meda目录存在
 	if err := os.MkdirAll(c.Meta.Dir, 0777); err != nil {
 		return nil, fmt.Errorf("mkdir all: %s", err)
 	}
@@ -122,6 +125,7 @@ func NewServer(c *Config, buildInfo *BuildInfo) (*Server, error) {
 		}
 	}
 
+	// load node infomation
 	_, err := influxdb.LoadNode(c.Meta.Dir)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -129,6 +133,7 @@ func NewServer(c *Config, buildInfo *BuildInfo) (*Server, error) {
 		}
 	}
 
+	// load raft db info
 	if err := raftDBExists(c.Meta.Dir); err != nil {
 		return nil, err
 	}
@@ -375,6 +380,7 @@ func (s *Server) Open() error {
 	go mux.Serve(ln)
 
 	// Append services.
+	// 将所有具有Service属性的方法加入到数组里面
 	s.appendMonitorService()
 	s.appendPrecreatorService(s.config.Precreator)
 	s.appendSnapshotterService()
@@ -576,6 +582,7 @@ var prof struct {
 }
 
 // StartProfile initializes the cpu and memory profile, if specified.
+// 打印cpuprofile和memprofile
 func startProfile(cpuprofile, memprofile string) {
 	if cpuprofile != "" {
 		f, err := os.Create(cpuprofile)
@@ -600,6 +607,7 @@ func startProfile(cpuprofile, memprofile string) {
 }
 
 // StopProfile closes the cpu and memory profiles if they are running.
+// stop println cpu and memory profile
 func stopProfile() {
 	if prof.cpu != nil {
 		pprof.StopCPUProfile()

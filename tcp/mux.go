@@ -18,7 +18,10 @@ const (
 )
 
 // Mux multiplexes a network connection.
+// tcp调度器
 type Mux struct {
+	// lock
+	// listener
 	mu sync.RWMutex
 	ln net.Listener
 	m  map[byte]*listener
@@ -77,7 +80,7 @@ func (mux *Mux) Serve(ln net.Listener) error {
 			Temporary() bool
 		}); ok && err.Temporary() {
 			continue
-		}
+		} // if err !=nil ,maybe should close all connections
 		if err != nil {
 			// Wait for all connections to be demux
 			mux.wg.Wait()
@@ -107,6 +110,7 @@ func (mux *Mux) Serve(ln net.Listener) error {
 		}
 
 		// Demux in a goroutine to
+		// handle it
 		mux.wg.Add(1)
 		go mux.handleConn(conn)
 	}

@@ -20,6 +20,7 @@ import (
 
 // These variables are populated via the Go linker.
 var (
+	//记录版本信息
 	version string
 	commit  string
 	branch  string
@@ -27,6 +28,7 @@ var (
 
 func init() {
 	// If commit, branch, or build time are not set, make that clear.
+	// 如果没有设置版本信息，设置为默认值: unknow
 	if version == "" {
 		version = "unknown"
 	}
@@ -39,8 +41,10 @@ func init() {
 }
 
 func main() {
+	// 设置随机数, 给rand函数随机种子
 	rand.Seed(time.Now().UnixNano())
 
+	// 主逻辑， 初始化Main结构， 前台执行Run操作， Run方法中监听系统调用信号
 	m := NewMain()
 	if err := m.Run(os.Args[1:]...); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -66,11 +70,12 @@ func NewMain() *Main {
 
 // Run determines and runs the command specified by the CLI args.
 func (m *Main) Run(args ...string) error {
+	// 应该使用flag参数优化一下， 这样看起来就容易理解
 	name, args := cmd.ParseCommandName(args)
 
 	// Extract name from args.
 	switch name {
-	case "", "run":
+	case "", "run": // server后台执行
 		cmd := run.NewCommand()
 
 		// Tell the server the build details.
@@ -78,10 +83,11 @@ func (m *Main) Run(args ...string) error {
 		cmd.Commit = commit
 		cmd.Branch = branch
 
-		if err := cmd.Run(args...); err != nil {
+		if err := cmd.Run(args...); err != nil { //主逻辑是cmd.Run方法
 			return fmt.Errorf("run: %s", err)
 		}
 
+		// 系统signal监听
 		signalCh := make(chan os.Signal, 1)
 		signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
 		cmd.Logger.Info("Listening for signals")
@@ -89,17 +95,18 @@ func (m *Main) Run(args ...string) error {
 		// Block until one of the signals above is received
 		<-signalCh
 		cmd.Logger.Info("Signal received, initializing clean shutdown...")
+		// 异步执行Close方法
 		go cmd.Close()
 
 		// Block again until another signal is received, a shutdown timeout elapses,
 		// or the Command is gracefully closed
 		cmd.Logger.Info("Waiting for clean shutdown...")
 		select {
-		case <-signalCh:
+		case <-signalCh: //如果用户第二次方法系统信号就直接hard shutdown
 			cmd.Logger.Info("Second signal received, initializing hard shutdown")
-		case <-time.After(time.Second * 30):
+		case <-time.After(time.Second * 30): // shutdown超时
 			cmd.Logger.Info("Time limit reached, initializing hard shutdown")
-		case <-cmd.Closed:
+		case <-cmd.Closed: //shutdown正常结束
 			cmd.Logger.Info("Server shutdown completed")
 		}
 
@@ -119,7 +126,7 @@ func (m *Main) Run(args ...string) error {
 		if err := run.NewPrintConfigCommand().Run(args...); err != nil {
 			return fmt.Errorf("config: %s", err)
 		}
-	case "version":
+	case "version": // 输出版本信息
 		if err := NewVersionCommand().Run(args...); err != nil {
 			return fmt.Errorf("version: %s", err)
 		}

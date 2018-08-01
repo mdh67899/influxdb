@@ -65,6 +65,7 @@ type Config struct {
 }
 
 // NewConfig returns an instance of Config with reasonable defaults.
+// 初始化Config结构体， 默认配置
 func NewConfig() *Config {
 	c := &Config{}
 	c.Meta = meta.NewConfig()
@@ -91,6 +92,7 @@ func NewConfig() *Config {
 }
 
 // NewDemoConfig returns the config that runs when no config is specified.
+// 返回一个demo结构体
 func NewDemoConfig() (*Config, error) {
 	c := NewConfig()
 
